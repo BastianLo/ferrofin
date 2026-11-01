@@ -276,6 +276,14 @@ pub struct Inner {
     /// Dispatches `/Plugins/{id}/web/…` requests into the owning runtime
     /// plugin. `None` (no WASM host wired) ⇒ those routes 404.
     pub plugin_routes: Option<Arc<dyn ferrofin_traits::plugins::PluginRequestHandler>>,
+    /// The core LDAP provider's administration (`/Ldap/*`). `None` until the
+    /// composition root wires it via [`AppState::with_ldap`]; while unset those
+    /// routes answer `503`.
+    pub ldap: Option<Arc<dyn ferrofin_traits::security::LdapManager>>,
+    /// Password-reset providers besides the built-in pin file (LDAP). A user
+    /// whose `PasswordResetProviderId` names an enabled one is sent to it by
+    /// `POST /Users/ForgotPassword`.
+    pub password_reset_providers: Vec<Arc<dyn ferrofin_traits::security::PasswordResetProvider>>,
 
     /// The playback-decision metrics recorder (feeds the benchmark suite's
     /// playback metrics). `None` until the composition root wires it via
@@ -428,6 +436,8 @@ impl AppState {
             live_tv: None,
             file_transformations: None,
             plugin_routes: None,
+            ldap: None,
+            password_reset_providers: Vec::new(),
             playback_metrics: None,
             merge_versions: None,
             music,
@@ -931,6 +941,33 @@ impl AppState {
         let inner = Arc::get_mut(&mut self.inner)
             .expect("with_plugin_request_handler must be called before the state is shared");
         inner.plugin_routes = Some(handler);
+        self
+    }
+
+    /// Wires the core LDAP provider's administration routes (`/Ldap/*`).
+    ///
+    /// # Panics
+    /// If called after the state has been shared (composition-root only).
+    #[must_use]
+    pub fn with_ldap(mut self, ldap: Arc<dyn ferrofin_traits::security::LdapManager>) -> Self {
+        let inner = Arc::get_mut(&mut self.inner)
+            .expect("with_ldap must be called before the state is shared");
+        inner.ldap = Some(ldap);
+        self
+    }
+
+    /// Registers password-reset providers besides the built-in one.
+    ///
+    /// # Panics
+    /// If called after the state has been shared (composition-root only).
+    #[must_use]
+    pub fn with_password_reset_providers(
+        mut self,
+        providers: Vec<Arc<dyn ferrofin_traits::security::PasswordResetProvider>>,
+    ) -> Self {
+        let inner = Arc::get_mut(&mut self.inner)
+            .expect("with_password_reset_providers must be called before the state is shared");
+        inner.password_reset_providers = providers;
         self
     }
 

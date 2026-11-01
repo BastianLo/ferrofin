@@ -48,7 +48,7 @@ use uuid::Uuid;
 
 use ferrofin_traits::error::ServiceError;
 use ferrofin_traits::library::{PolicyGuardState, PolicySaved, UserManager, policy_update_refusal};
-use ferrofin_traits::security::AuthenticationManager;
+use ferrofin_traits::security::{AuthenticationManager, PasswordResetProvider};
 
 use crate::auth_providers::{
     DEFAULT_AUTH_PROVIDER_ID, DefaultAuthenticationProvider, INVALID_AUTH_PROVIDER_ID,
@@ -72,6 +72,15 @@ const DEFAULT_BOOTSTRAP_USERNAME: &str = "MyJellyfinUser";
 
 type LoginLocks = Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>;
 
+tokio::task_local! {
+    /// The login-lock key the current task holds while authentication providers
+    /// run. A provider that updates the user it is authenticating (LDAP syncs
+    /// the administrator flag through `update_policy`) re-enters this manager
+    /// on the same task; the lock it would take is already this task's, and
+    /// taking it again would wait forever.
+    static HELD_LOGIN_LOCK: String;
+}
+
 mod user_repository;
 
 /// The concrete user manager.
@@ -89,6 +98,9 @@ pub struct FerrofinUserManager {
     default_provider: DefaultAuthenticationProvider,
     invalid_provider: InvalidAuthProvider,
     providers: Vec<Arc<dyn AuthenticationManager>>,
+    /// Password-reset providers besides the built-in one (LDAP), listed by
+    /// `GET /Auth/PasswordResetProviders` while enabled.
+    password_reset_providers: Vec<Arc<dyn PasswordResetProvider>>,
     /// This server's stable id, stamped onto every [`UserDto.ServerId`] when the
     /// caller does not supply one. The web client keys its per-server api-client
     /// on it and throws (`getApiClient(null)`) if it is missing. Set by the
@@ -301,6 +313,7 @@ impl FerrofinUserManager {
             default_provider: DefaultAuthenticationProvider::new(),
             invalid_provider: InvalidAuthProvider::new(),
             providers,
+            password_reset_providers: Vec::new(),
             server_id: None,
             activity: None,
             config: None,
@@ -308,6 +321,17 @@ impl FerrofinUserManager {
             image_processor: None,
             auth_cache: Arc::new(crate::auth_cache::AuthCache::default()),
         }
+    }
+
+    /// Registers password-reset providers besides the built-in one (port of the
+    /// `IPasswordResetProvider` exports upstream discovers).
+    #[must_use]
+    pub fn with_password_reset_providers(
+        mut self,
+        providers: Vec<Arc<dyn PasswordResetProvider>>,
+    ) -> Self {
+        self.password_reset_providers = providers;
+        self
     }
 
     /// Shares the live network policy used by HTTP authorization and trusted
@@ -593,7 +617,11 @@ impl FerrofinUserManager {
     ) -> Result<PolicySaved, ServiceError> {
         let id = guid_to_db(user_id);
         let login_lock = self.login_lock(&id);
-        let _login_guard = login_lock.lock().await;
+        let _login_guard = if HELD_LOGIN_LOCK.try_with(|held| *held == id) == Ok(true) {
+            None
+        } else {
+            Some(login_lock.lock().await)
+        };
         self.require_user(user_id).await?;
 
         // "The default number of login attempts is 3, but for some god forsaken
@@ -771,13 +799,14 @@ impl FerrofinUserManager {
 }
 
 /// The stored provider id for a provider `name` (C# `GetType().FullName`). The
-/// two built-in providers map to their canonical `Jellyfin.*` type names so a
-/// migrated database matches; any other provider is assumed to already report
-/// its fully-qualified id as its name.
+/// two built-in providers and the core LDAP provider map to their canonical C#
+/// type names so a migrated database matches; any other provider is assumed to
+/// already report its fully-qualified id as its name.
 fn provider_id(name: &str) -> &str {
     match name {
         "Default" => DEFAULT_AUTH_PROVIDER_ID,
         "InvalidOrMissingAuthenticationProvider" => INVALID_AUTH_PROVIDER_ID,
+        crate::ldap::LDAP_AUTH_PROVIDER_NAME => crate::ldap::LDAP_AUTH_PROVIDER_ID,
         other => other,
     }
 }
@@ -1162,12 +1191,18 @@ impl UserManager for FerrofinUserManager {
         // Authentication reads the user before password verification and writes
         // its counters afterwards. A writer transaction alone cannot serialize
         // that whole span. Match C#'s per-user lock and reload inside it.
-        let login_lock = self.login_lock(user.as_ref().map_or("", |user| user.id.as_str()));
+        let lock_key = user
+            .as_ref()
+            .map_or_else(String::new, |user| user.id.clone());
+        let login_lock = self.login_lock(&lock_key);
         let _login_guard = login_lock.lock().await;
         let user = self.get_user_by_name(username).await?;
 
-        let (user, success) = self
-            .authenticate_with_providers(username, password, user)
+        let (user, success) = HELD_LOGIN_LOCK
+            .scope(
+                lock_key,
+                self.authenticate_with_providers(username, password, user),
+            )
             .await?;
 
         let Some(mut user) = user else {
@@ -1277,12 +1312,25 @@ impl UserManager for FerrofinUserManager {
     }
 
     async fn get_password_reset_providers(&self) -> Result<Vec<NameIdPair>, ServiceError> {
-        // Unknown saved IDs fall back to this sole registered provider, just
-        // as UserManager.GetPasswordResetProviders does upstream.
-        Ok(vec![NameIdPair {
+        // UserManager.GetPasswordResetProviders: the enabled providers, the
+        // built-in one first, then by name. Unknown saved IDs fall back to the
+        // built-in one.
+        let mut pairs = vec![NameIdPair {
             name: Some("Default Password Reset Provider".to_owned()),
             id: Some(DEFAULT_PASSWORD_RESET_PROVIDER_ID.to_owned()),
-        }])
+        }];
+        let mut extra = Vec::new();
+        for provider in &self.password_reset_providers {
+            if provider.is_enabled().await? {
+                extra.push(NameIdPair {
+                    name: Some(provider.name().to_owned()),
+                    id: Some(provider.id().to_owned()),
+                });
+            }
+        }
+        extra.sort_by(|a, b| a.name.cmp(&b.name));
+        pairs.extend(extra);
+        Ok(pairs)
     }
 
     async fn get_user_dto(

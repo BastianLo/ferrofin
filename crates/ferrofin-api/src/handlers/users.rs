@@ -1082,8 +1082,9 @@ async fn log_password_changed(state: &AppState, user_id: Uuid, username: &str) {
 /// `POST /Users/ForgotPassword` — begin built-in password recovery.
 /// Known users on the local network get a PIN file in ProgramDataPath. All
 /// callers receive PinCode and the computed path, without disclosing account
-/// existence. Unknown reset-provider IDs fall back to this built-in provider,
-/// which is the only currently registered choice, matching Jellyfin.
+/// existence. A local user whose `PasswordResetProviderId` names an enabled
+/// external provider (LDAP) is handed to it instead; unknown reset-provider IDs
+/// fall back to this built-in provider, matching Jellyfin.
 #[utoipa::path(
     post,
     path = "/Users/ForgotPassword",
@@ -1102,6 +1103,23 @@ async fn forgot_password(
         state.users.get_user_by_name(&body.entered_username).await?
     };
     let local = state.is_in_local_network(state.client_address(&parts));
+    // `UserManager.GetPasswordResetProvider`: a user whose saved provider is an
+    // enabled external one (LDAP) is reset there; anyone else by the pin file.
+    if local && let Some(user) = &user {
+        for provider in &state.password_reset_providers {
+            if provider
+                .id()
+                .eq_ignore_ascii_case(&user.password_reset_provider_id)
+                && provider.is_enabled().await?
+            {
+                return Ok(Json(
+                    provider
+                        .start_forgot_password_process(user, &body.entered_username, local)
+                        .await?,
+                ));
+            }
+        }
+    }
     let username = user
         .as_ref()
         .filter(|_| local)

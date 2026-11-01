@@ -138,6 +138,13 @@ reqwest = { version = "0.13.5", default-features = false, features = ["json", "r
 rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["aws_lc_rs", "logging", "tls12"] }
 p12-keystore = "0.4.1"
+# The core LDAP authentication provider (port of jellyfin-plugin-ldapauth): a pure-Rust
+# async client on the same rustls/aws-lc-rs stack, with the platform's root store for
+# `ldaps://` and StartTLS.
+ldap3 = { version = "0.12.1", default-features = false, features = ["tls-rustls-aws-lc-rs"] }
+rustls-native-certs = "0.8"
+# Base64 profile images and image hashes of the LDAP provider.
+base64 = "0.23.1"
 # Self-signed certificates for the HTTPS tests (dev-dependency only).
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 

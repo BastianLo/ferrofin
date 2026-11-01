@@ -1,8 +1,12 @@
 //! Security-layer traits — pluggable authentication and Quick Connect.
 //!
 //! Port of `MediaBrowser.Controller.Authentication.IAuthenticationProvider`
-//! (surfaced here as [`AuthenticationManager`]) and
-//! `MediaBrowser.Controller.QuickConnect.IQuickConnect` ([`QuickConnect`]).
+//! (surfaced here as [`AuthenticationManager`]),
+//! `MediaBrowser.Controller.Authentication.IPasswordResetProvider`
+//! ([`PasswordResetProvider`]) and
+//! `MediaBrowser.Controller.QuickConnect.IQuickConnect` ([`QuickConnect`]),
+//! plus [`LdapManager`], the administration surface of the core LDAP provider
+//! (port of `jellyfin-plugin-ldapauth`'s `LdapController`).
 //!
 //! Port rules applied throughout:
 //! - The C# `User` argument of `ChangePassword` becomes a [`UserEntity`] row;
@@ -18,13 +22,17 @@
 //! - `Task<T>` → `async fn -> Result<T, ServiceError>`; the `IsEnabled` property
 //!   becomes an `async fn` so implementations may consult live configuration.
 //!
-//! Both traits are object-safe and carry `_assert_object_safe_*` assertions.
+//! Every trait is object-safe and carries an `_assert_object_safe_*` assertion.
 
 use async_trait::async_trait;
 use ferrofin_db::entities::users::UserEntity;
+use ferrofin_model::ldap::{
+    LdapConfiguration, LdapFilterResponse, ServerConnectionInfo, ServerTestResponse,
+    UserFilterInfo, UserSearchAttributes, UserSearchResponse,
+};
 use ferrofin_model::quick_connect::QuickConnectResult;
 use ferrofin_model::security::AuthenticationInfo;
-use ferrofin_model::users::UserPolicy;
+use ferrofin_model::users::{ForgotPasswordResult, UserPolicy};
 use uuid::Uuid;
 
 use crate::error::ServiceError;
@@ -82,6 +90,76 @@ pub trait AuthenticationManager: Send + Sync {
 }
 
 fn _assert_object_safe_authentication_manager(_: &dyn AuthenticationManager) {}
+
+/// A pluggable password-reset backend besides the built-in pin-file one.
+///
+/// Port of `IPasswordResetProvider`'s `StartForgotPasswordProcess` half. The
+/// built-in `DefaultPasswordResetProvider` lives in the API layer; a user whose
+/// `PasswordResetProviderId` names one of these providers is sent here instead.
+/// (`RedeemPasswordResetPin` has no counterpart: the only external provider,
+/// LDAP, hands the user a reset URL and never issues a pin.)
+#[async_trait]
+pub trait PasswordResetProvider: Send + Sync {
+    /// The provider's display name.
+    fn name(&self) -> &str;
+
+    /// The id stored on `User.PasswordResetProviderId` (C# `GetType().FullName`).
+    fn id(&self) -> &str;
+
+    /// Whether the provider is currently enabled.
+    async fn is_enabled(&self) -> Result<bool, ServiceError>;
+
+    /// Starts a forgot-password process for `user`, who entered `entered_username`.
+    async fn start_forgot_password_process(
+        &self,
+        user: &UserEntity,
+        entered_username: &str,
+        is_in_network: bool,
+    ) -> Result<ForgotPasswordResult, ServiceError>;
+}
+
+fn _assert_object_safe_password_reset_provider(_: &dyn PasswordResetProvider) {}
+
+/// Administration of the core LDAP authentication provider.
+///
+/// Port of `jellyfin-plugin-ldapauth`'s `LdapController` plus the plugin
+/// configuration it edits. Each test saves the settings it was given first, as
+/// upstream does. Errors follow the controller: a failed connect or bind is
+/// [`ServiceError::Unauthorized`] (`401`), an invalid filter
+/// [`ServiceError::InvalidInput`] (`400`), each with the message the client shows.
+#[async_trait]
+pub trait LdapManager: Send + Sync {
+    /// The current configuration.
+    async fn get_configuration(&self) -> Result<LdapConfiguration, ServiceError>;
+
+    /// Replaces the configuration and saves it.
+    async fn update_configuration(&self, config: LdapConfiguration) -> Result<(), ServiceError>;
+
+    /// Saves the connection settings and runs connect → StartTLS → bind → base
+    /// search, reporting each step (`TestServerBind`).
+    async fn test_server_bind(
+        &self,
+        info: ServerConnectionInfo,
+    ) -> Result<ServerTestResponse, ServiceError>;
+
+    /// Saves the filters and counts the entries each matches (`TestLdapFilters`).
+    async fn test_ldap_filters(
+        &self,
+        info: UserFilterInfo,
+    ) -> Result<LdapFilterResponse, ServiceError>;
+
+    /// Saves the search attributes and locates a test username (`LdapUserSearch`).
+    async fn ldap_user_search(
+        &self,
+        body: UserSearchAttributes,
+    ) -> Result<UserSearchResponse, ServiceError>;
+
+    /// Synchronises every linked user's profile image from LDAP (the plugin's
+    /// `LdapProfileImageSyncTask`); a no-op while image sync is off.
+    async fn sync_profile_images(&self) -> Result<(), ServiceError>;
+}
+
+fn _assert_object_safe_ldap_manager(_: &dyn LdapManager) {}
 
 /// Drives the Quick Connect pairing flow.
 ///

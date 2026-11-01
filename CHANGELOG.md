@@ -10,6 +10,17 @@ called out in [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## [Unreleased]
 
+### Features
+- LDAP authentication as a core provider, ported from `jellyfin-plugin-ldapauth` with its
+  name, id, settings and behaviour: directory login with user creation, uid links,
+  administrator filter, renames, password changes (Password Modify or the password
+  attribute), the reset-URL password-reset provider, the "LDAP - Synchronize profile
+  images" task, referral following, LDAPS/StartTLS with a custom CA or client certificate.
+  Off until configured over the new admin routes `/Ldap/Configuration`,
+  `/Ldap/TestServerBind`, `/Ldap/TestLdapFilters` and `/Ldap/LdapUserSearch` (or
+  `{config}/ldap.json`); an adopted Jellyfin data directory's `LDAP-Auth.xml` is imported
+  once, switched on ([docs/LDAP.md](docs/LDAP.md))
+
 ### Database
 - Rebuild the Live TV channel table without its cascading key to the tuner hosts
   (migration 0046), keeping every channel and airing; the guide refresh removes a deleted

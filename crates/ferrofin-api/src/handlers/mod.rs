@@ -164,6 +164,7 @@ pub mod intro_skipper;
 pub mod item_lookup;
 pub mod item_update;
 pub mod items;
+pub mod ldap;
 pub mod library;
 pub mod library_structure;
 pub mod live_tv;
@@ -1896,6 +1897,9 @@ pub fn register(router: Router<AppState>) -> Router<AppState> {
     let router = search::register(router);
     let router = channels::register(router);
     let router = backup::register(router);
+    // The core LDAP provider's administration — outside the Jellyfin contract
+    // (the plugin's controller never was in it), so not in REAL_ROUTES.
+    let router = ldap::register(router);
     // Batch 13 — system admin / configuration / branding / localization /
     // display preferences / activity log / dashboard / environment / time sync.
     let router = config::register(router);

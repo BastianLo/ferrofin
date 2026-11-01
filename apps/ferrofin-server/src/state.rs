@@ -839,21 +839,44 @@ pub async fn build_app_state(
         ferrofin_networking::NetworkManager::live(network_config),
     ));
 
+    // ---- LDAP authentication (core provider) -----------------------------
+    // `{config}/ldap.json`; on a Jellyfin data directory with the LDAP-Auth
+    // plugin configured, its `plugins/configurations/LDAP-Auth.xml` is imported
+    // once so the users it linked keep logging in. Off until configured.
+    let ldap_store = Arc::new(
+        ferrofin_core::ldap::LdapConfigStore::open(
+            std::path::Path::new(&paths.configuration_directory_path()),
+            &std::path::Path::new(&paths.plugins_path()).join("configurations"),
+        )
+        .context("loading the LDAP configuration")?,
+    );
+    let ldap = Arc::new(ferrofin_core::ldap::LdapAuthenticationProvider::new(
+        Arc::clone(&ldap_store),
+    ));
     let users_impl = Arc::new(
-        FerrofinUserManager::new(db.clone())
-            .with_network(Arc::clone(&network))
-            .with_image_processor(Arc::clone(&image_processor))
-            .with_server_id(server_id.clone())
-            // Upstream `PostUserImage`: `{UserConfigurationDirectoryPath}/{Username}/`.
-            .with_profile_image_dir(paths.user_configuration_directory_path())
-            .with_auth_cache(Arc::clone(&auth_cache))
-            // A lockout is a dashboard Alert, not just a log line.
-            .with_activity(Arc::clone(&activity))
-            // Resolves each user's CastReceiverId against the configured
-            // receivers — jellyfin-web shows no cast devices without one.
-            .with_configuration(Arc::clone(&config_trait)),
+        FerrofinUserManager::with_providers(
+            db.clone(),
+            vec![Arc::clone(&ldap) as Arc<dyn ferrofin_traits::security::AuthenticationManager>],
+        )
+        .with_password_reset_providers(vec![
+            Arc::clone(&ldap) as Arc<dyn ferrofin_traits::security::PasswordResetProvider>
+        ])
+        .with_network(Arc::clone(&network))
+        .with_image_processor(Arc::clone(&image_processor))
+        .with_server_id(server_id.clone())
+        // Upstream `PostUserImage`: `{UserConfigurationDirectoryPath}/{Username}/`.
+        .with_profile_image_dir(paths.user_configuration_directory_path())
+        .with_auth_cache(Arc::clone(&auth_cache))
+        // A lockout is a dashboard Alert, not just a log line.
+        .with_activity(Arc::clone(&activity))
+        // Resolves each user's CastReceiverId against the configured
+        // receivers — jellyfin-web shows no cast devices without one.
+        .with_configuration(Arc::clone(&config_trait)),
     );
     let users: Arc<dyn ferrofin_traits::library::UserManager> = users_impl;
+    // The provider creates and updates the users it authenticates through the
+    // manager that holds it — weakly, so neither keeps the other alive.
+    ldap.attach_user_manager(Arc::downgrade(&users));
     // Kept concrete until the session manager exists: the versions a
     // played-state change propagates to are announced through it (below).
     let user_data_impl = Arc::new(FerrofinUserDataManager::new(
@@ -2124,6 +2147,14 @@ pub async fn build_app_state(
                 &plugins,
             )),
         ));
+        // "LDAP - Synchronize profile images" (Application category): the LDAP
+        // provider's image sync, hidden while LDAP is off.
+        task_manager.register(Arc::new(
+            ferrofin_core::ldap::task::LdapProfileImageSyncTask::new(
+                Arc::clone(&ldap) as Arc<dyn ferrofin_traits::security::LdapManager>,
+                Arc::clone(&ldap_store),
+            ),
+        ));
         // "Refresh Channels" (Internet Channels category): registered exactly
         // as upstream does, over Ferrofin's own channel set — which is empty
         // (no channel-plugin mechanism, see `docs/EXTENSIONS.md`), so the task
@@ -2715,7 +2746,13 @@ pub async fn build_app_state(
     // and the WASM plugins the host loaded). The manager persists the repository
     // list and per-plugin configuration under `{config}/plugins/` and stages WASM
     // installs for the next start; `docs/EXTENSIONS.md` describes the two tiers.
-    let state = state.with_plugins(Arc::clone(&plugins));
+    let state = state
+        .with_plugins(Arc::clone(&plugins))
+        // `/Ldap/*` and the LDAP users' forgot-password flow.
+        .with_ldap(Arc::clone(&ldap) as Arc<dyn ferrofin_traits::security::LdapManager>)
+        .with_password_reset_providers(vec![
+            Arc::clone(&ldap) as Arc<dyn ferrofin_traits::security::PasswordResetProvider>
+        ]);
 
     // ---- SyncPlay ---------------------------------------------------------
     // The SyncPlay manager shares the session message bus (created with the

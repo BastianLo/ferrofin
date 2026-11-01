@@ -8,6 +8,20 @@ Ferrofin's own database upgrades in place: start the new version against the sam
 data directory and its migrations run on boot. Back up the data directory before a
 major-version upgrade.
 
+## Unreleased — LDAP authentication is built in
+
+- **Users of Jellyfin's LDAP-Auth plugin can log in again.** An adopted Jellyfin database's
+  LDAP users (`AuthenticationProviderId`
+  `Jellyfin.Plugin.LDAP_Auth.LdapAuthenticationProviderPlugin`) were refused by every
+  earlier Ferrofin, which had no such provider. Ferrofin now has it as a core feature
+  ([LDAP.md](LDAP.md)). If the data directory still holds the plugin's
+  `plugins/configurations/LDAP-Auth.xml`, the first boot imports it into
+  `config/ldap.json` **with LDAP switched on** and logs that it did; check the log line,
+  then log in as an LDAP user. Without that file nothing changes until an administrator
+  sets `Enabled` through `POST /Ldap/Configuration`.
+- **Nothing changes for local users.** LDAP is off by default; when it is on, it is only
+  asked for names no local user has, and for users it created.
+
 ## Unreleased — Live TV sources and guides follow Jellyfin more closely
 
 - **A local M3U playlist is opened exactly as configured.** An M3U tuner configured as a

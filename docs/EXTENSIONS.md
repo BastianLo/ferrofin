@@ -470,8 +470,9 @@ host capabilities are issues on this repository and land as additive WIT changes
 
 ## Non-goals for the WASM tier
 
-- **Authentication providers (SSO/LDAP)** — security-critical core surface; if wanted it
-  becomes a core feature, never sandbox-hosted third-party code.
+- **Authentication providers (SSO/LDAP)** — security-critical core surface: they are core
+  features, never sandbox-hosted third-party code. LDAP is one — the port of
+  `jellyfin-plugin-ldapauth` lives in `ferrofin-core` ([LDAP.md](LDAP.md)).
 - **DLNA** — needs SSDP/UDP sockets; the sandbox has no sockets by design.
 - **Item mutation/linking** (Merge-Versions-shaped) — item identity stays host-owned;
   plugins contribute metadata, they never restructure the library.

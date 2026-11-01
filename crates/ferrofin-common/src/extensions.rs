@@ -63,6 +63,12 @@ pub fn sha1_hex(bytes: &[u8]) -> String {
     out
 }
 
+/// The raw MD5 digest of `bytes` (`MD5.HashData(bytes)`).
+#[must_use]
+pub fn md5_digest(bytes: &[u8]) -> [u8; 16] {
+    md5::compute(bytes)
+}
+
 /// Computes the MD5 of `str`'s UTF-16LE bytes as a [`Uuid`].
 ///
 /// Port of `BaseExtensions.GetMD5`: MD5 over `Encoding.Unicode.GetBytes(str)`

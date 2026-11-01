@@ -150,6 +150,13 @@ Checked against a real Jellyfin server by the retired v2 runtime diff:
 
 Wired and working, with a documented limitation or lighter verification:
 
+- **LDAP authentication** — a core port of `jellyfin-plugin-ldapauth`: login with
+  user creation, uid linking, administrator mapping, renames, password changes, reset URL,
+  profile-image sync task, referrals, LDAPS/StartTLS with custom CA and client
+  certificates, and a one-time import of the plugin's `LDAP-Auth.xml`. Verified against a
+  real OpenLDAP (`FERROFIN_LDAP_TESTS=1`), not yet against Active Directory. Configured over
+  `/Ldap/*` or `ldap.json`; the plugin's dashboard page is not ported yet
+  ([LDAP.md](LDAP.md)).
 - **`LiveTv/Programs` filter params** — a few query params (3 ops) are accepted but not yet
   honored as filters.
 - **Similar items** — the local weighted genre/tag/people scorer always runs; the remote

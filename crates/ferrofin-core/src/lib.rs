@@ -204,6 +204,7 @@ pub mod keyframe_extractors;
 pub mod keyframe_repository;
 pub mod kinds;
 mod latest_tv_repository;
+pub mod ldap;
 pub mod library_changed_notifier;
 pub mod library_manager;
 pub mod library_monitor;

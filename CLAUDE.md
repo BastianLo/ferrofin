@@ -73,7 +73,7 @@ chromaprint      health       │          ├─ drawing
 | `ferrofin-livetv` | Live TV — M3U/HDHomeRun tuners + XMLTV/Schedules Direct guides, DB-backed DVR timers/recordings |
 | `ferrofin-extensions` | compiled-in extensions behind an `Extension` trait (Tier 1a — see `docs/EXTENSIONS.md`) |
 | `ferrofin-wasm` | the Tier-1b WASM plugin host: sandboxed `ferrofin:plugin` components from `{data_dir}/plugins/` (wasmtime; WIT contract in `crates/ferrofin-wasm/wit/`) |
-| `ferrofin-core` | the concrete manager implementations — the workhorse |
+| `ferrofin-core` | the concrete manager implementations — the workhorse (also the core LDAP authentication provider, `ldap/`) |
 | `ferrofin-api` | axum router + handlers (the HTTP layer) |
 | `apps/ferrofin-server` | the binary: config → DB → ffmpeg → wire everything → serve |
 
@@ -270,6 +270,15 @@ extracted into the cache whatever their `filename` tags say.
 Both of these need an ffmpeg with libx264, and `subtitle_streams_ffmpeg` also needs ffmpeg
 5.1 or later. CI does not run them (CI never sets `FERROFIN_FFMPEG_TESTS`): run them by hand
 for changes to those paths.
+
+The LDAP provider's end-to-end test starts a real OpenLDAP `slapd` per test (needs
+`slapd`/`slapadd`; Debian/Ubuntu `apt-get install slapd`) and skips without
+`FERROFIN_LDAP_TESTS`; CI does not run it, so run it by hand for changes to
+`ferrofin-core/src/ldap/` or the login path:
+
+```bash
+FERROFIN_LDAP_TESTS=1 cargo test -p ferrofin-core --test ldap_slapd
+```
 
 Similarly, the end-to-end WASM plugin test builds the reference guest from source (needs the
 `wasm32-wasip2` target — the `examples/wasm-hello/` toolchain island provides it; the root
