@@ -16,7 +16,8 @@ called out in [docs/UPGRADING.md](docs/UPGRADING.md).
   administrator filter, renames, password changes (Password Modify or the password
   attribute), the reset-URL password-reset provider, the "LDAP - Synchronize profile
   images" task, referral following, LDAPS/StartTLS with a custom CA or client certificate.
-  Off until configured over the new admin routes `/Ldap/Configuration`,
+  Off until configured in the dashboard (Dashboard → LDAP, the plugin's settings page
+  ported) or over the new admin routes `/Ldap/Configuration`,
   `/Ldap/TestServerBind`, `/Ldap/TestLdapFilters` and `/Ldap/LdapUserSearch` (or
   `{config}/ldap.json`); an adopted Jellyfin data directory's `LDAP-Auth.xml` is imported
   once, switched on ([docs/LDAP.md](docs/LDAP.md))

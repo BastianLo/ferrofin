@@ -234,14 +234,19 @@ pub struct ServerConnectionInfo {
 #[serde(rename_all = "PascalCase")]
 pub struct ServerTestResponse {
     /// The connection step.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub connect: Option<String>,
     /// The StartTLS step, when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub start_tls: Option<String>,
     /// The bind step (`Success`, or `Anonymous` for an anonymous bind).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bind: Option<String>,
     /// The base search step (`Found {n} Entities`).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub base_search: Option<String>,
     /// The error that ended the test, if one did.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -293,6 +298,7 @@ pub struct UserSearchAttributes {
 #[serde(rename_all = "PascalCase")]
 pub struct UserSearchResponse {
     /// The DN of the located entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub located_dn: Option<String>,
 }
 

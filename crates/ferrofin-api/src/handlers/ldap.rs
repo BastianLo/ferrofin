@@ -11,6 +11,10 @@
 //! - `POST /Ldap/TestLdapFilters` — save the filters and count their matches.
 //! - `POST /Ldap/LdapUserSearch` — save the search attributes and locate a user.
 //!
+//! The dashboard gets an "LDAP" entry in its admin drawer
+//! ([`configuration_page_info`]) whose page ([`CONFIG_PAGE_HTML`], the plugin's
+//! settings page ported to these routes) is served by `handlers::dashboard`.
+//!
 //! These routes are not in the vendored Jellyfin contract (the plugin's routes
 //! never were), so like `/Plugins/{id}/web/*` they are registered but not listed
 //! in `REAL_ROUTES`. Every route requires an administrator. A failed bind answers
@@ -32,6 +36,32 @@ use crate::auth::RequireAdmin;
 use crate::error::ApiError;
 use crate::extract::JsonBody;
 use crate::state::AppState;
+
+/// The name the LDAP settings page is fetched by
+/// (`/web/configurationpage?name=LDAP`).
+pub const CONFIG_PAGE_NAME: &str = "LDAP";
+
+/// The page's id: the upstream plugin's GUID (`LdapPlugin.Id`). jellyfin-web
+/// keys the dashboard drawer entry on it; no plugin with it is installed, so the
+/// plugins list never pairs it with one.
+const CONFIG_PAGE_ID: uuid::Uuid = uuid::Uuid::from_u128(0x958a_ad66_3784_4d2a_b89a_a7b6_fab6_e25c);
+
+/// The LDAP settings page: a port of the plugin's `configPage.html` over
+/// `/Ldap/Configuration` and the test routes.
+pub const CONFIG_PAGE_HTML: &str = include_str!("ldap_config_page.html");
+
+/// The dashboard entry for the LDAP settings page, in the admin drawer.
+#[must_use]
+pub fn configuration_page_info() -> ferrofin_model::plugins::ConfigurationPageInfo {
+    ferrofin_model::plugins::ConfigurationPageInfo {
+        name: CONFIG_PAGE_NAME.to_owned(),
+        enable_in_main_menu: true,
+        menu_section: Some("server".to_owned()),
+        menu_icon: Some("vpn_key".to_owned()),
+        display_name: Some("LDAP".to_owned()),
+        plugin_id: Some(CONFIG_PAGE_ID),
+    }
+}
 
 /// The wired LDAP manager, or `503` when the composition root wired none.
 fn ldap(state: &AppState) -> Result<&dyn LdapManager, ApiError> {
@@ -161,6 +191,11 @@ pub fn register(router: Router<AppState>) -> Router<AppState> {
         .route("/Ldap/TestServerBind", post(test_server_bind))
         .route("/Ldap/TestLdapFilters", post(test_ldap_filters))
         .route("/Ldap/LdapUserSearch", post(ldap_user_search))
+        // ASP.NET routing is case-insensitive and the plugin's page (and any
+        // script written against it) posts to `ldap/…`; axum's is not.
+        .route("/ldap/TestServerBind", post(test_server_bind))
+        .route("/ldap/TestLdapFilters", post(test_ldap_filters))
+        .route("/ldap/LdapUserSearch", post(ldap_user_search))
 }
 
 #[cfg(test)]

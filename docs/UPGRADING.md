@@ -18,7 +18,7 @@ major-version upgrade.
   `plugins/configurations/LDAP-Auth.xml`, the first boot imports it into
   `config/ldap.json` **with LDAP switched on** and logs that it did; check the log line,
   then log in as an LDAP user. Without that file nothing changes until an administrator
-  sets `Enabled` through `POST /Ldap/Configuration`.
+  ticks **Enable LDAP authentication** under Dashboard → LDAP.
 - **Nothing changes for local users.** LDAP is off by default; when it is on, it is only
   asked for names no local user has, and for users it created.
 

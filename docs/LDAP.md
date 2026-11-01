@@ -37,6 +37,12 @@ provider) are unaffected by LDAP being on, off, or unreachable.
 
 ## Configuring it
 
+**In the dashboard:** Dashboard → **LDAP** (in the drawer's plugin section, with a key
+icon). The page is the plugin's settings page, ported: tick **Enable LDAP
+authentication**, fill in the server, use the three *Save and Test* buttons, then **Save**.
+It is served as a core page (no plugin is installed) through jellyfin-web's
+configuration-page mechanism, so it needs no change to jellyfin-web.
+
 The configuration lives in `{config}/ldap.json` (written with `0600` permissions: it
 holds the bind password). LDAP is **off** until `Enabled` is `true`. The fields and their
 defaults are the plugin's:
@@ -64,7 +70,7 @@ defaults are the plugin's:
 | `EnableLdapProfileImageSync`, `LdapProfileImageAttribute`, `LdapProfileImageFormat`, `RemoveImagesNotInLdap` | `false`, `jpegphoto`, `Default`, `false` | profile images |
 | `LdapUsers` | `[]` | the uid ↔ user links the provider maintains |
 
-Administrators manage it over HTTP (every route needs an administrator; they are the
+Administrators can also manage it over HTTP (every route needs an administrator; they are the
 plugin's `LdapController` plus the configuration):
 
 | Route | Does |
@@ -74,6 +80,8 @@ plugin's `LdapController` plus the configuration):
 | `POST /Ldap/TestServerBind` | save the connection settings, report connect → StartTLS → bind → base search |
 | `POST /Ldap/TestLdapFilters` | save the filters, count the users and administrators they match (`400` for a bad filter) |
 | `POST /Ldap/LdapUserSearch` | save the search attributes, show the DN a test name resolves to |
+
+The test routes also answer under the plugin's lower-case `/ldap/…` spelling.
 
 Like the plugin, each test **saves** the settings it was sent before it runs. A failed
 connect or bind answers `401`, a malformed filter `400`, both with `{"Message": "…"}`.
@@ -137,8 +145,3 @@ slapd`) and is off unless asked for:
 FERROFIN_LDAP_TESTS=1 cargo test -p ferrofin-core --test ldap_slapd
 ```
 
-## Not ported yet
-
-- The plugin's **dashboard settings page** (`configPage.html`): jellyfin-web shows a
-  plugin page only for an installed plugin, and LDAP here is core. Until Ferrofin ships its
-  own page, configure it through the routes above or `ldap.json`.

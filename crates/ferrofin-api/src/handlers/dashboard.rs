@@ -47,6 +47,11 @@ async fn get_configuration_pages(
     Query(query): Query<ConfigurationPagesQuery>,
 ) -> Result<Json<Vec<ConfigurationPageInfo>>, ApiError> {
     let mut pages = state.plugins.get_configuration_pages().await?;
+    // Core settings pages: LDAP is a core provider, not a plugin, but its
+    // settings page reaches the admin drawer the same way.
+    if state.ldap.is_some() {
+        pages.push(crate::handlers::ldap::configuration_page_info());
+    }
     // When the caller filters on main-menu placement, keep only matching pages.
     if let Some(want) = query.enable_in_main_menu {
         pages.retain(|p| p.enable_in_main_menu == want);
@@ -84,6 +89,13 @@ async fn get_dashboard_configuration_page(
     Query(query): Query<ConfigurationPageQuery>,
 ) -> Result<Response, ApiError> {
     let name = query.name.unwrap_or_default();
+    if state.ldap.is_some() && name.eq_ignore_ascii_case(crate::handlers::ldap::CONFIG_PAGE_NAME) {
+        return Ok((
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            crate::handlers::ldap::CONFIG_PAGE_HTML,
+        )
+            .into_response());
+    }
     match state.plugins.get_configuration_page(&name).await? {
         Some(bytes) => Ok(([(header::CONTENT_TYPE, page_mime(&name))], bytes).into_response()),
         None => Err(ApiError::NotFound(format!(

@@ -187,3 +187,81 @@ async fn tests_answer_with_the_plugins_shapes() {
         "Found no LDAP users matching provided username."
     );
 }
+
+#[tokio::test]
+async fn the_settings_page_reaches_the_admin_drawer() {
+    let ldap = Arc::new(FakeLdap::default());
+    let (status, json) = call(
+        wired(&ldap),
+        "GET",
+        "/web/ConfigurationPages?enableInMainMenu=true",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let page = json
+        .as_array()
+        .expect("pages")
+        .iter()
+        .find(|p| p["Name"] == "LDAP")
+        .expect("the LDAP page is listed");
+    assert_eq!(page["EnableInMainMenu"], true);
+    assert_eq!(page["DisplayName"], "LDAP");
+    assert_eq!(page["PluginId"], "958aad6637844d2ab89aa7b6fab6e25c");
+
+    // Unwired: no entry, no page.
+    let (_, json) = call(
+        elevated_fake_state(),
+        "GET",
+        "/web/ConfigurationPages",
+        None,
+    )
+    .await;
+    assert!(
+        !json
+            .as_array()
+            .expect("pages")
+            .iter()
+            .any(|p| p["Name"] == "LDAP")
+    );
+
+    let request = Request::builder()
+        .uri("/web/configurationpage?name=ldap")
+        .body(Body::empty())
+        .expect("request");
+    let response = create_router(wired(&ldap))
+        .oneshot(request)
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response.headers()["content-type"]
+            .to_str()
+            .expect("type")
+            .starts_with("text/html")
+    );
+    let html = String::from_utf8(
+        axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body")
+            .to_vec(),
+    )
+    .expect("utf-8");
+    assert!(html.contains(r#"data-role="page""#));
+    assert!(html.contains("Ldap/Configuration"));
+    assert!(html.contains("chkEnabled"));
+}
+
+#[tokio::test]
+async fn the_plugins_lower_case_test_routes_answer_too() {
+    let ldap = Arc::new(FakeLdap::default());
+    let (status, json) = call(
+        wired(&ldap),
+        "POST",
+        "/ldap/TestLdapFilters",
+        Some(serde_json::json!({"LdapSearchFilter": "(uid=*)"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["Users"], 2);
+}
